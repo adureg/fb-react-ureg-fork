@@ -50,6 +50,7 @@ const skipFilter = new Set([
   'component',
   'cond-deps-conditional-member-expr',
   'conditional-break-labeled',
+  'propagate-scope-deps-hir-fork/conditional-break-labeled',
   'conditional-set-state-in-render',
   'constant-computed',
   'constant-propagation-phi',
@@ -134,7 +135,6 @@ const skipFilter = new Set([
   'same-variable-as-dep-and-redeclare',
   'simple-scope',
   'ssa-arrayexpression',
-  'ssa-cascading-eliminated-phis',
   'ssa-for-of',
   'ssa-multiple-phis',
   'ssa-nested-loops-no-reassign',
@@ -144,9 +144,6 @@ const skipFilter = new Set([
   'ssa-objectexpression',
   'ssa-property-alias-if',
   'ssa-reassign',
-  'ssa-renaming-ternary-destruction',
-  'ssa-renaming-ternary',
-  'ssa-renaming-unconditional-ternary',
   'ssa-renaming-via-destructuring',
   'ssa-renaming',
   'ssa-sibling-phis',
@@ -325,15 +322,9 @@ const skipFilter = new Set([
   'repro-scope-missing-mutable-range',
   'repro',
   'simple',
-  'ssa-leave-case',
   'ssa-property-alias-alias-mutate-if',
   'ssa-property-alias-mutate-if',
   'ssa-property-alias-mutate-inside-if',
-  'ssa-renaming-ternary-destruction-with-mutation',
-  'ssa-renaming-ternary-with-mutation',
-  'ssa-renaming-unconditional-with-mutation',
-  'ssa-renaming-via-destructuring-with-mutation',
-  'ssa-renaming-with-mutation',
   'switch-global-propertyload-case-test',
   'switch-non-final-default',
   'switch',
@@ -390,11 +381,12 @@ const skipFilter = new Set([
   'template-literal',
   'multi-arrow-expr-export-default-gating-test',
 
-  // TODO: we should be able to support these
-  'component-declaration-basic.flow',
-  'hook-declaration-basic.flow',
+  // works, but appears differently when printing
+  // due to optional function argument
   'nested-function-with-param-as-captured-dep',
   'deeply-nested-function-expressions-with-params',
+
+  // TODO: we should be able to support these
   'readonly-object-method-calls',
   'readonly-object-method-calls-mutable-lambda',
   'preserve-memo-validation/useMemo-with-refs.flow',
@@ -483,7 +475,6 @@ const skipFilter = new Set([
   'rules-of-hooks/rules-of-hooks-69521d94fa03',
 
   // bugs
-  'bug-renaming-jsx-tag-lowercase',
   'fbt/bug-fbt-plural-multiple-function-calls',
   'fbt/bug-fbt-plural-multiple-mixed-call-tag',
   'bug-invalid-hoisting-functionexpr',
@@ -493,15 +484,27 @@ const skipFilter = new Set([
 
   // 'react-compiler-runtime' not yet supported
   'flag-enable-emit-hook-guards',
-
   'fast-refresh-refresh-on-const-changes-dev',
   'useState-pruned-dependency-change-detect',
   'useState-unpruned-dependency',
   'useState-and-other-hook-unpruned-dependency',
   'change-detect-reassign',
 
+  // Depends on external functions
+  'idx-method-no-outlining-wildcard',
+  'idx-method-no-outlining',
+
   // needs to be executed as a module
   'meta-property',
+
+  // needs context lowering support in React
+  'todo.lower-context-access-property-load',
+  'todo.lower-context-access-nested-destructuring',
+  'todo.lower-context-access-mixed-array-obj',
+  'todo.lower-context-access-destructure-multiple',
+  'todo.lower-context-access-array-destructuring',
+  'lower-context-selector-simple',
+  'lower-context-acess-multiple',
 ]);
 
 export default skipFilter;

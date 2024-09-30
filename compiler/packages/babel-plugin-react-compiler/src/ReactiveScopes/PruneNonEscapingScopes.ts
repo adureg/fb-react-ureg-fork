@@ -9,6 +9,7 @@ import {CompilerError} from '../CompilerError';
 import {
   DeclarationId,
   Environment,
+  Identifier,
   InstructionId,
   Pattern,
   Place,
@@ -24,8 +25,8 @@ import {
   isMutableEffect,
 } from '../HIR';
 import {getFunctionCallSignature} from '../Inference/InferReferenceEffects';
-import {assertExhaustive} from '../Utils/utils';
-import {getPlaceScope} from './BuildReactiveBlocks';
+import {assertExhaustive, getOrInsertDefault} from '../Utils/utils';
+import {getPlaceScope} from '../HIR/HIR';
 import {
   ReactiveFunctionTransform,
   ReactiveFunctionVisitor,
@@ -670,12 +671,11 @@ function computeMemoizationInputs(
         ],
       };
     }
-    case 'CallExpression': {
+    case 'TaggedTemplateExpression': {
       const signature = getFunctionCallSignature(
         env,
-        value.callee.identifier.type,
+        value.tag.identifier.type,
       );
-      const operands = [...eachReactiveValueOperand(value)];
       let lvalues = [];
       if (lvalue !== null) {
         lvalues.push({place: lvalue, level: MemoizationLevel.Memoized});
@@ -686,6 +686,33 @@ function computeMemoizationInputs(
           rvalues: [],
         };
       }
+      const operands = [...eachReactiveValueOperand(value)];
+      lvalues.push(
+        ...operands
+          .filter(operand => isMutableEffect(operand.effect, operand.loc))
+          .map(place => ({place, level: MemoizationLevel.Memoized})),
+      );
+      return {
+        lvalues,
+        rvalues: operands,
+      };
+    }
+    case 'CallExpression': {
+      const signature = getFunctionCallSignature(
+        env,
+        value.callee.identifier.type,
+      );
+      let lvalues = [];
+      if (lvalue !== null) {
+        lvalues.push({place: lvalue, level: MemoizationLevel.Memoized});
+      }
+      if (signature?.noAlias === true) {
+        return {
+          lvalues,
+          rvalues: [],
+        };
+      }
+      const operands = [...eachReactiveValueOperand(value)];
       lvalues.push(
         ...operands
           .filter(operand => isMutableEffect(operand.effect, operand.loc))
@@ -701,7 +728,6 @@ function computeMemoizationInputs(
         env,
         value.property.identifier.type,
       );
-      const operands = [...eachReactiveValueOperand(value)];
       let lvalues = [];
       if (lvalue !== null) {
         lvalues.push({place: lvalue, level: MemoizationLevel.Memoized});
@@ -712,6 +738,7 @@ function computeMemoizationInputs(
           rvalues: [],
         };
       }
+      const operands = [...eachReactiveValueOperand(value)];
       lvalues.push(
         ...operands
           .filter(operand => isMutableEffect(operand.effect, operand.loc))
@@ -725,7 +752,6 @@ function computeMemoizationInputs(
     case 'RegExpLiteral':
     case 'ObjectMethod':
     case 'FunctionExpression':
-    case 'TaggedTemplateExpression':
     case 'ArrayExpression':
     case 'NewExpression':
     case 'ObjectExpression':
@@ -935,6 +961,11 @@ class PruneScopesTransform extends ReactiveFunctionTransform<
   Set<DeclarationId>
 > {
   prunedScopes: Set<ScopeId> = new Set();
+  /**
+   * Track reassignments so we can correctly set `pruned` flags for
+   * inlined useMemos.
+   */
+  reassignments: Map<DeclarationId, Set<Identifier>> = new Map();
 
   override transformScope(
     scopeBlock: ReactiveScopeBlock,
@@ -977,24 +1008,45 @@ class PruneScopesTransform extends ReactiveFunctionTransform<
     }
   }
 
+  /**
+   * If we pruned the scope for a non-escaping value, we know it doesn't
+   * need to be memoized. Remove associated `Memoize` instructions so that
+   * we don't report false positives on "missing" memoization of these values.
+   */
   override transformInstruction(
     instruction: ReactiveInstruction,
     state: Set<DeclarationId>,
   ): Transformed<ReactiveStatement> {
     this.traverseInstruction(instruction, state);
 
-    /**
-     * If we pruned the scope for a non-escaping value, we know it doesn't
-     * need to be memoized. Remove associated `Memoize` instructions so that
-     * we don't report false positives on "missing" memoization of these values.
-     */
-    if (instruction.value.kind === 'FinishMemoize') {
-      const identifier = instruction.value.decl.identifier;
+    const value = instruction.value;
+    if (value.kind === 'StoreLocal' && value.lvalue.kind === 'Reassign') {
+      const ids = getOrInsertDefault(
+        this.reassignments,
+        value.lvalue.place.identifier.declarationId,
+        new Set(),
+      );
+      ids.add(value.value.identifier);
+    } else if (value.kind === 'FinishMemoize') {
+      let decls;
+      if (value.decl.identifier.scope == null) {
+        /**
+         * If the manual memo was a useMemo that got inlined, iterate through
+         * all reassignments to the iife temporary to ensure they're memoized.
+         */
+        decls = this.reassignments.get(value.decl.identifier.declarationId) ?? [
+          value.decl.identifier,
+        ];
+      } else {
+        decls = [value.decl.identifier];
+      }
+
       if (
-        identifier.scope !== null &&
-        this.prunedScopes.has(identifier.scope.id)
+        [...decls].every(
+          decl => decl.scope == null || this.prunedScopes.has(decl.scope.id),
+        )
       ) {
-        instruction.value.pruned = true;
+        value.pruned = true;
       }
     }
 

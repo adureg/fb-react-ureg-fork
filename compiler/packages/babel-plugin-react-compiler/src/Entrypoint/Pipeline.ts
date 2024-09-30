@@ -41,23 +41,19 @@ import {
   constantPropagation,
   deadCodeElimination,
   pruneMaybeThrows,
+  inlineJsxTransform,
 } from '../Optimization';
 import {instructionReordering} from '../Optimization/InstructionReordering';
 import {
   CodegenFunction,
   alignObjectMethodScopes,
-  alignReactiveScopesToBlockScopes,
   assertScopeInstructionsWithinScopes,
   assertWellFormedBreakTargets,
-  buildReactiveBlocks,
   buildReactiveFunction,
   codegenFunction,
   extractScopeDeclarationsFromDestructuring,
-  flattenReactiveLoops,
-  flattenScopesWithHooksOrUse,
   inferReactiveScopeVariables,
   memoizeFbtAndMacroOperandsInSameScope,
-  mergeOverlappingReactiveScopes,
   mergeReactiveScopesThatInvalidateTogether,
   promoteUsedTemporaries,
   propagateEarlyReturns,
@@ -103,6 +99,10 @@ import {
 import {validateLocalsNotReassignedAfterRender} from '../Validation/ValidateLocalsNotReassignedAfterRender';
 import {outlineFunctions} from '../Optimization/OutlineFunctions';
 import {propagatePhiTypes} from '../TypeInference/PropagatePhiTypes';
+import {lowerContextAccess} from '../Optimization/LowerContextAccess';
+import {validateNoSetStateInPassiveEffects} from '../Validation/ValidateNoSetStateInPassiveEffects';
+import {validateNoJSXInTryStatement} from '../Validation/ValidateNoJSXInTryStatement';
+import {propagateScopeDependenciesHIR} from '../HIR/PropagateScopeDependenciesHIR';
 
 export type CompilerPipelineValue =
   | {kind: 'ast'; name: string; value: CodegenFunction}
@@ -204,6 +204,10 @@ function* runWithEnvironment(
     validateNoCapitalizedCalls(hir);
   }
 
+  if (env.config.lowerContextAccess) {
+    lowerContextAccess(hir, env.config.lowerContextAccess);
+  }
+
   analyseFunctions(hir);
   yield log({kind: 'hir', name: 'AnalyseFunctions', value: hir});
 
@@ -237,6 +241,14 @@ function* runWithEnvironment(
 
   if (env.config.validateNoSetStateInRender) {
     validateNoSetStateInRender(hir);
+  }
+
+  if (env.config.validateNoSetStateInPassiveEffects) {
+    validateNoSetStateInPassiveEffects(hir);
+  }
+
+  if (env.config.validateNoJSXInTryStatements) {
+    validateNoJSXInTryStatement(hir);
   }
 
   inferReactivePlaces(hir);
@@ -285,53 +297,68 @@ function* runWithEnvironment(
     value: hir,
   });
 
-  if (env.config.enableReactiveScopesInHIR) {
-    pruneUnusedLabelsHIR(hir);
+  pruneUnusedLabelsHIR(hir);
+  yield log({
+    kind: 'hir',
+    name: 'PruneUnusedLabelsHIR',
+    value: hir,
+  });
+
+  alignReactiveScopesToBlockScopesHIR(hir);
+  yield log({
+    kind: 'hir',
+    name: 'AlignReactiveScopesToBlockScopesHIR',
+    value: hir,
+  });
+
+  mergeOverlappingReactiveScopesHIR(hir);
+  yield log({
+    kind: 'hir',
+    name: 'MergeOverlappingReactiveScopesHIR',
+    value: hir,
+  });
+  assertValidBlockNesting(hir);
+
+  buildReactiveScopeTerminalsHIR(hir);
+  yield log({
+    kind: 'hir',
+    name: 'BuildReactiveScopeTerminalsHIR',
+    value: hir,
+  });
+
+  assertValidBlockNesting(hir);
+
+  flattenReactiveLoopsHIR(hir);
+  yield log({
+    kind: 'hir',
+    name: 'FlattenReactiveLoopsHIR',
+    value: hir,
+  });
+
+  flattenScopesWithHooksOrUseHIR(hir);
+  yield log({
+    kind: 'hir',
+    name: 'FlattenScopesWithHooksOrUseHIR',
+    value: hir,
+  });
+  assertTerminalSuccessorsExist(hir);
+  assertTerminalPredsExist(hir);
+  if (env.config.enablePropagateDepsInHIR) {
+    propagateScopeDependenciesHIR(hir);
     yield log({
       kind: 'hir',
-      name: 'PruneUnusedLabelsHIR',
+      name: 'PropagateScopeDependenciesHIR',
       value: hir,
     });
+  }
 
-    alignReactiveScopesToBlockScopesHIR(hir);
+  if (env.config.inlineJsxTransform) {
+    inlineJsxTransform(hir, env.config.inlineJsxTransform);
     yield log({
       kind: 'hir',
-      name: 'AlignReactiveScopesToBlockScopesHIR',
+      name: 'inlineJsxTransform',
       value: hir,
     });
-
-    mergeOverlappingReactiveScopesHIR(hir);
-    yield log({
-      kind: 'hir',
-      name: 'MergeOverlappingReactiveScopesHIR',
-      value: hir,
-    });
-    assertValidBlockNesting(hir);
-
-    buildReactiveScopeTerminalsHIR(hir);
-    yield log({
-      kind: 'hir',
-      name: 'BuildReactiveScopeTerminalsHIR',
-      value: hir,
-    });
-
-    assertValidBlockNesting(hir);
-
-    flattenReactiveLoopsHIR(hir);
-    yield log({
-      kind: 'hir',
-      name: 'FlattenReactiveLoopsHIR',
-      value: hir,
-    });
-
-    flattenScopesWithHooksOrUseHIR(hir);
-    yield log({
-      kind: 'hir',
-      name: 'FlattenScopesWithHooksOrUseHIR',
-      value: hir,
-    });
-    assertTerminalSuccessorsExist(hir);
-    assertTerminalPredsExist(hir);
   }
 
   const reactiveFunction = buildReactiveFunction(hir);
@@ -349,52 +376,16 @@ function* runWithEnvironment(
     name: 'PruneUnusedLabels',
     value: reactiveFunction,
   });
+  assertScopeInstructionsWithinScopes(reactiveFunction);
 
-  if (!env.config.enableReactiveScopesInHIR) {
-    alignReactiveScopesToBlockScopes(reactiveFunction);
+  if (!env.config.enablePropagateDepsInHIR) {
+    propagateScopeDependencies(reactiveFunction);
     yield log({
       kind: 'reactive',
-      name: 'AlignReactiveScopesToBlockScopes',
-      value: reactiveFunction,
-    });
-
-    mergeOverlappingReactiveScopes(reactiveFunction);
-    yield log({
-      kind: 'reactive',
-      name: 'MergeOverlappingReactiveScopes',
-      value: reactiveFunction,
-    });
-
-    buildReactiveBlocks(reactiveFunction);
-    yield log({
-      kind: 'reactive',
-      name: 'BuildReactiveBlocks',
-      value: reactiveFunction,
-    });
-
-    flattenReactiveLoops(reactiveFunction);
-    yield log({
-      kind: 'reactive',
-      name: 'FlattenReactiveLoops',
-      value: reactiveFunction,
-    });
-
-    flattenScopesWithHooksOrUse(reactiveFunction);
-    yield log({
-      kind: 'reactive',
-      name: 'FlattenScopesWithHooks',
+      name: 'PropagateScopeDependencies',
       value: reactiveFunction,
     });
   }
-
-  assertScopeInstructionsWithinScopes(reactiveFunction);
-
-  propagateScopeDependencies(reactiveFunction);
-  yield log({
-    kind: 'reactive',
-    name: 'PropagateScopeDependencies',
-    value: reactiveFunction,
-  });
 
   pruneNonEscapingScopes(reactiveFunction);
   yield log({
@@ -447,17 +438,17 @@ function* runWithEnvironment(
     value: reactiveFunction,
   });
 
-  promoteUsedTemporaries(reactiveFunction);
-  yield log({
-    kind: 'reactive',
-    name: 'PromoteUsedTemporaries',
-    value: reactiveFunction,
-  });
-
   pruneUnusedLValues(reactiveFunction);
   yield log({
     kind: 'reactive',
     name: 'PruneUnusedLValues',
+    value: reactiveFunction,
+  });
+
+  promoteUsedTemporaries(reactiveFunction);
+  yield log({
+    kind: 'reactive',
+    name: 'PromoteUsedTemporaries',
     value: reactiveFunction,
   });
 
@@ -572,4 +563,15 @@ export function log(value: CompilerPipelineValue): CompilerPipelineValue {
     }
   }
   return value;
+}
+
+export function* runPlayground(
+  func: NodePath<
+    t.FunctionDeclaration | t.ArrowFunctionExpression | t.FunctionExpression
+  >,
+  config: EnvironmentConfig,
+  fnType: ReactFunctionType,
+): Generator<CompilerPipelineValue, CodegenFunction> {
+  const ast = yield* run(func, config, fnType, '_c', null, null, null);
+  return ast;
 }

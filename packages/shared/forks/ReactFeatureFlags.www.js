@@ -30,11 +30,13 @@ export const {
   enableRetryLaneExpiration,
   enableTransitionTracing,
   enableTrustedTypesIntegration,
+  enableHiddenSubtreeInsertionEffectCleanup,
   favorSafetyOverHydrationPerf,
   renameElementSymbol,
   retryLaneExpirationMs,
   syncLaneExpirationMs,
   transitionLaneExpirationMs,
+  enableSiblingPrerendering,
 } = dynamicFeatureFlags;
 
 // On WWW, __EXPERIMENTAL__ is used for a new modern build.
@@ -60,6 +62,8 @@ export const disableInputAttributeSyncing = false;
 export const enableLegacyFBSupport = true;
 export const enableLazyContextPropagation = true;
 
+export const enableComponentPerformanceTrack = false;
+
 // Logs additional User Timing API marks for use with an experimental profiling tool.
 export const enableSchedulingProfiler: boolean =
   __PROFILE__ && dynamicFeatureFlags.enableSchedulingProfiler;
@@ -77,6 +81,8 @@ export const enableAsyncIterableChildren = false;
 export const enableTaint = false;
 
 export const enablePostpone = false;
+
+export const enableHalt = false;
 
 export const enableContextProfiling = true;
 

@@ -17,6 +17,7 @@ export const enableSchedulingProfiler = false;
 export const enableProfilerTimer = __PROFILE__;
 export const enableProfilerCommitHooks = __PROFILE__;
 export const enableProfilerNestedUpdatePhase = __PROFILE__;
+export const enableComponentPerformanceTrack = false;
 export const enableUpdaterTracking = false;
 export const enableCache = true;
 export const enableLegacyCache = __EXPERIMENTAL__;
@@ -25,6 +26,7 @@ export const enableFlightReadableStream = true;
 export const enableAsyncIterableChildren = false;
 export const enableTaint = true;
 export const enablePostpone = false;
+export const enableHalt = false;
 export const disableCommentsAsDOMContainers = true;
 export const disableInputAttributeSyncing = false;
 export const disableIEWorkarounds = true;
@@ -45,6 +47,7 @@ export const enableLegacyFBSupport = false;
 export const enableFilterEmptyStringAttributesDOM = true;
 export const enableGetInspectorDataForInstanceInProduction = false;
 export const enableFabricCompleteRootInCommitPhase = false;
+export const enableHiddenSubtreeInsertionEffectCleanup = false;
 
 export const enableRetryLaneExpiration = false;
 export const retryLaneExpirationMs = 5000;
@@ -52,7 +55,7 @@ export const syncLaneExpirationMs = 250;
 export const transitionLaneExpirationMs = 5000;
 
 export const disableSchedulerTimeoutInWorkLoop = false;
-export const enableLazyContextPropagation = __EXPERIMENTAL__;
+export const enableLazyContextPropagation = true;
 export const enableContextProfiling = false;
 export const enableLegacyHidden = false;
 
@@ -79,6 +82,7 @@ export const enableAddPropertiesFastPath = false;
 
 export const renameElementSymbol = true;
 export const enableShallowPropDiffing = false;
+export const enableSiblingPrerendering = false;
 
 // TODO: This must be in sync with the main ReactFeatureFlags file because
 // the Test Renderer's value must be the same as the one used by the

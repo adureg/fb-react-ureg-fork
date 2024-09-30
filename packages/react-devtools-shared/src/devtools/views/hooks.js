@@ -7,7 +7,6 @@
  * @flow
  */
 
-import throttle from 'lodash.throttle';
 import {
   useCallback,
   useEffect,
@@ -125,10 +124,8 @@ export function useIsOverflowing(
 
     const container = ((containerRef.current: any): HTMLDivElement);
 
-    const handleResize = throttle(
-      () => setIsOverflowing(container.clientWidth <= totalChildWidth),
-      100,
-    );
+    const handleResize = () =>
+      setIsOverflowing(container.clientWidth <= totalChildWidth);
 
     handleResize();
 
@@ -189,7 +186,7 @@ export function useLocalStorage<T>(
   );
 
   // Listen for changes to this local storage value made from other windows.
-  // This enables the e.g. "⚛️ Elements" tab to update in response to changes from "⚛️ Settings".
+  // This enables the e.g. "⚛ Elements" tab to update in response to changes from "⚛ Settings".
   useLayoutEffect(() => {
     // $FlowFixMe[missing-local-annot]
     const onStorage = event => {

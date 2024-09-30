@@ -40,9 +40,11 @@ export const enableFilterEmptyStringAttributesDOM = true;
 export const enableFizzExternalRuntime = true;
 export const enableFlightReadableStream = true;
 export const enableGetInspectorDataForInstanceInProduction = false;
+export const enableHalt = false;
 export const enableInfiniteRenderLoopDetection = true;
-export const enableLazyContextPropagation = false;
+export const enableLazyContextPropagation = true;
 export const enableContextProfiling = false;
+export const enableHiddenSubtreeInsertionEffectCleanup = true;
 export const enableLegacyCache = false;
 export const enableLegacyFBSupport = false;
 export const enableLegacyHidden = false;
@@ -59,6 +61,7 @@ export const enableRefAsProp = true;
 export const enableRenderableContext = true;
 export const enableRetryLaneExpiration = false;
 export const enableSchedulingProfiler = __PROFILE__;
+export const enableComponentPerformanceTrack = false;
 export const enableScopeAPI = false;
 export const enableServerComponentLogs = true;
 export const enableShallowPropDiffing = false;
@@ -79,6 +82,7 @@ export const syncLaneExpirationMs = 250;
 export const transitionLaneExpirationMs = 5000;
 export const useModernStrictMode = true;
 export const enableFabricCompleteRootInCommitPhase = false;
+export const enableSiblingPrerendering = false;
 
 // Flow magic to verify the exports of this file match the original version.
 ((((null: any): ExportsType): FeatureFlagsType): ExportsType);

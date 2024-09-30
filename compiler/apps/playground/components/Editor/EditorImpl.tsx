@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {parse as babelParse, ParserPlugin} from '@babel/parser';
+import {parse as babelParse} from '@babel/parser';
 import * as HermesParser from 'hermes-parser';
 import traverse, {NodePath} from '@babel/traverse';
 import * as t from '@babel/types';
@@ -15,10 +15,8 @@ import {
   Effect,
   ErrorSeverity,
   parseConfigPragma,
-  printHIR,
-  printReactiveFunction,
-  run,
   ValueKind,
+  runPlayground,
   type Hook,
 } from 'babel-plugin-react-compiler/src';
 import {type ReactFunctionType} from 'babel-plugin-react-compiler/src/HIR/Environment';
@@ -45,7 +43,7 @@ import {
 import {printFunctionWithOutlined} from 'babel-plugin-react-compiler/src/HIR/PrintHIR';
 import {printReactiveFunctionWithOutlined} from 'babel-plugin-react-compiler/src/ReactiveScopes/PrintReactiveFunction';
 
-function parseInput(input: string, language: 'flow' | 'typescript') {
+function parseInput(input: string, language: 'flow' | 'typescript'): any {
   // Extract the first line to quickly check for custom test directives
   if (language === 'flow') {
     return HermesParser.parse(input, {
@@ -66,14 +64,14 @@ function parseFunctions(
   source: string,
   language: 'flow' | 'typescript',
 ): Array<
-  NodePath<
-    t.FunctionDeclaration | t.ArrowFunctionExpression | t.FunctionExpression
-  >
+  | NodePath<t.FunctionDeclaration>
+  | NodePath<t.ArrowFunctionExpression>
+  | NodePath<t.FunctionExpression>
 > {
   const items: Array<
-    NodePath<
-      t.FunctionDeclaration | t.ArrowFunctionExpression | t.FunctionExpression
-    >
+    | NodePath<t.FunctionDeclaration>
+    | NodePath<t.ArrowFunctionExpression>
+    | NodePath<t.FunctionExpression>
   > = [];
   try {
     const ast = parseInput(source, language);
@@ -155,26 +153,37 @@ function isHookName(s: string): boolean {
   return /^use[A-Z0-9]/.test(s);
 }
 
-function getReactFunctionType(
-  id: NodePath<t.Identifier | null | undefined>,
-): ReactFunctionType {
-  if (id && id.node && id.isIdentifier()) {
-    if (isHookName(id.node.name)) {
+function getReactFunctionType(id: t.Identifier | null): ReactFunctionType {
+  if (id != null) {
+    if (isHookName(id.name)) {
       return 'Hook';
     }
 
     const isPascalCaseNameSpace = /^[A-Z].*/;
-    if (isPascalCaseNameSpace.test(id.node.name)) {
+    if (isPascalCaseNameSpace.test(id.name)) {
       return 'Component';
     }
   }
   return 'Other';
 }
 
+function getFunctionIdentifier(
+  fn:
+    | NodePath<t.FunctionDeclaration>
+    | NodePath<t.ArrowFunctionExpression>
+    | NodePath<t.FunctionExpression>,
+): t.Identifier | null {
+  if (fn.isArrowFunctionExpression()) {
+    return null;
+  }
+  const id = fn.get('id');
+  return Array.isArray(id) === false && id.isIdentifier() ? id.node : null;
+}
+
 function compile(source: string): [CompilerOutput, 'flow' | 'typescript'] {
-  const results = new Map<string, PrintedCompilerPipelineValue[]>();
+  const results = new Map<string, Array<PrintedCompilerPipelineValue>>();
   const error = new CompilerError();
-  const upsert = (result: PrintedCompilerPipelineValue) => {
+  const upsert: (result: PrintedCompilerPipelineValue) => void = result => {
     const entry = results.get(result.name);
     if (Array.isArray(entry)) {
       entry.push(result);
@@ -188,40 +197,30 @@ function compile(source: string): [CompilerOutput, 'flow' | 'typescript'] {
   } else {
     language = 'typescript';
   }
+  let count = 0;
+  const withIdentifier = (id: t.Identifier | null): t.Identifier => {
+    if (id != null && id.name != null) {
+      return id;
+    } else {
+      return t.identifier(`anonymous_${count++}`);
+    }
+  };
   try {
     // Extract the first line to quickly check for custom test directives
     const pragma = source.substring(0, source.indexOf('\n'));
     const config = parseConfigPragma(pragma);
 
     for (const fn of parseFunctions(source, language)) {
-      if (!fn.isFunctionDeclaration()) {
-        error.pushErrorDetail(
-          new CompilerErrorDetail({
-            reason: `Unexpected function type ${fn.node.type}`,
-            description:
-              'Playground only supports parsing function declarations',
-            severity: ErrorSeverity.Todo,
-            loc: fn.node.loc ?? null,
-            suggestions: null,
-          }),
-        );
-        continue;
-      }
-
-      const id = fn.get('id');
-      for (const result of run(
+      const id = withIdentifier(getFunctionIdentifier(fn));
+      for (const result of runPlayground(
         fn,
         {
           ...config,
           customHooks: new Map([...COMMON_HOOKS]),
         },
         getReactFunctionType(id),
-        '_c',
-        null,
-        null,
-        null,
       )) {
-        const fnName = fn.node.id?.name ?? null;
+        const fnName = id.name;
         switch (result.kind) {
           case 'ast': {
             upsert({
@@ -230,7 +229,7 @@ function compile(source: string): [CompilerOutput, 'flow' | 'typescript'] {
               name: result.name,
               value: {
                 type: 'FunctionDeclaration',
-                id: result.value.id,
+                id: withIdentifier(result.value.id),
                 async: result.value.async,
                 generator: result.value.generator,
                 body: result.value.body,
@@ -274,13 +273,17 @@ function compile(source: string): [CompilerOutput, 'flow' | 'typescript'] {
       }
     }
   } catch (err) {
-    // error might be an invariant violation or other runtime error
-    // (i.e. object shape that is not CompilerError)
+    /**
+     * error might be an invariant violation or other runtime error
+     * (i.e. object shape that is not CompilerError)
+     */
     if (err instanceof CompilerError && err.details.length > 0) {
       error.details.push(...err.details);
     } else {
-      // Handle unexpected failures by logging (to get a stack trace)
-      // and reporting
+      /**
+       * Handle unexpected failures by logging (to get a stack trace)
+       * and reporting
+       */
       console.error(err);
       error.details.push(
         new CompilerErrorDetail({
@@ -298,7 +301,7 @@ function compile(source: string): [CompilerOutput, 'flow' | 'typescript'] {
   return [{kind: 'ok', results}, language];
 }
 
-export default function Editor() {
+export default function Editor(): JSX.Element {
   const store = useStore();
   const deferredStore = useDeferredValue(store);
   const dispatchStore = useStoreDispatch();

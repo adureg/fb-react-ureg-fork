@@ -20,8 +20,9 @@
 export const alwaysThrottleRetries = __VARIANT__;
 export const enableAddPropertiesFastPath = __VARIANT__;
 export const enableObjectFiber = __VARIANT__;
+export const enableHiddenSubtreeInsertionEffectCleanup = __VARIANT__;
 export const enablePersistedModeClonedFlag = __VARIANT__;
 export const enableShallowPropDiffing = __VARIANT__;
 export const passChildrenWhenCloningPersistedNodes = __VARIANT__;
 export const enableFabricCompleteRootInCommitPhase = __VARIANT__;
-export const enableLazyContextPropagation = __VARIANT__;
+export const enableSiblingPrerendering = __VARIANT__;
